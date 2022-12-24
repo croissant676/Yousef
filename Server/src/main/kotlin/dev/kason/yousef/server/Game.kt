@@ -1,18 +1,19 @@
 package dev.kason.yousef.server
 
-import dev.kason.yousef.server.data.CallRequest
-import dev.kason.yousef.server.data.CurrentPlayerUpdateMessage
-import dev.kason.yousef.server.data.GeneralPlayerUpdateMessage
-import dev.kason.yousef.server.data.TurnDiscardingRequest
+import dev.kason.yousef.server.data.*
 import kotlin.math.absoluteValue
 
 class Game(override val room: Room) : RoomEntity {
 
-    private val playerScores: MutableMap<Player, MutableList<Int>> = mutableMapOf()
-    val Player.scores: List<Int>
-        get() = playerScores[this] ?: emptyList()
+    val playerScores: MutableMap<Player, MutableList<Int>> = mutableMapOf()
+    val Player.scores: MutableList<Int>
+        get() = playerScores[this] ?: error("Player $name is not in the game")
     val Player.totalScore: Int
         get() = scores.sum()
+
+    suspend fun end(winner: Player) {
+
+    }
 
 }
 
@@ -41,7 +42,7 @@ class Round(val game: Game, val turnOrder: List<Player>) : RoomEntity {
     }
 
     private val playerHands: MutableMap<Player, MutableList<Card>> = mutableMapOf()
-    val Player.hand: List<Card>
+    val Player.hand: MutableList<Card>
         get() = playerHands[this] ?: error("Player $this is not in the game")
     val Player.sumCards: Int
         get() = hand.sumOf { it.value }
@@ -66,15 +67,84 @@ class Round(val game: Game, val turnOrder: List<Player>) : RoomEntity {
         while (true) {
             incrementPlayers()
             val turn = Turn(this, currentPlayer)
-            turn.play()
+            turn.playTurn()
             if (turn.isCall) {
                 playerCall()
+                return currentPlayer
             }
         }
     }
 
-    fun playerCall() {
-        currentPlayer.hand
+    suspend fun playerCall() = with(game) {
+        val value = currentPlayer.sumCards
+        if (room.players.filter { it != currentPlayer }.any { it.sumCards <= value }) {
+            // player called but someone else has a lower score
+            // player loses
+            room.players.forEach {
+                it.scores.add(if (it != currentPlayer) 0 else room.settings.miscallPunishment)
+            }
+            val otherPlayer = // select another player with an equal or less score
+                room.players.filter { it != currentPlayer }.minByOrNull { it.sumCards }!!
+            room.players.forEach {
+                it.sendMessage(
+                    IncorrectCallMessage(
+                        currentPlayer.name, currentPlayer.hand, currentPlayer.sumCards,
+                        otherPlayer.name, otherPlayer.hand, otherPlayer.sumCards
+                    )
+                )
+            }
+        } else {
+            room.players.forEach {
+                it.scores.add(if (it == currentPlayer) 0 else it.sumCards)
+            }
+            room.players.forEach {
+                it.sendMessage(
+                    CorrectCallMessage(
+                        currentPlayer.name, currentPlayer.hand, currentPlayer.sumCards
+                    )
+                )
+            }
+        }
+        // send everyone a message with the scores
+        room.players.forEach {
+            it.sendMessage(
+                RoundEndMessage(
+
+                )
+            )
+        }
+
+
+    }
+
+    fun createGeneralPlayerUpdateMessage(player: Player): GeneralPlayerUpdateMessage = with(game) {
+        return GeneralPlayerUpdateMessage(
+            cards = player.hand,
+            score = player.totalScore,
+            turn = turnCount,
+            round = turnCount,
+            discardTopCard = discardPile.last(),
+            deckSize = deck.size,
+            discardSize = discardPile.size
+        )
+    }
+
+    fun createDiscardCardMessage(player: Player, cards: List<Card>): DiscardCardMessage = with(game) {
+        return DiscardCardMessage(
+            player = player.name,
+            cards = cards,
+            discardTopCard = discardPile.last(),
+            deckSize = deck.size,
+            discardSize = discardPile.size
+        )
+    }
+
+    fun createDrawUpdateMessage(): DrawUpdateMessage = with(game) {
+        return DrawUpdateMessage(
+            deckSize = deck.size,
+            discardSize = discardPile.size,
+            discardTopCard = discardPile.last()
+        )
     }
 }
 
@@ -84,39 +154,103 @@ class Turn(val round: Round, val player: Player) : RoomEntity {
 
     var isCall: Boolean = false
     var placedCards: List<Card>? = null
-    var cardSupplier: DrawSource? = null
+    var drawingSource: DrawSource? = null
     var pickedUpCard: Card? = null
+    var attemptCount: Int = 0
 
     val isFinished get() = placedCards != null
     val hasPlacedCards get() = placedCards != null
 
-    suspend fun play() {
+    suspend fun playTurn() {
+        while (true) {
+            try {
+                val success = attemptTurn()
+                if (success) break
+            } catch (e: Exception) {
+                attemptCount++
+            }
+        }
+    }
+
+    // Attempt to play a turn
+    // Returns true if the turn was successful
+    // Returns false if the turn was unsuccessful
+    suspend fun attemptTurn(): Boolean {
         player.sendMessage(CurrentPlayerUpdateMessage(player.name, round.turnCount, round.turnIndex))
         var request = player.receiveRequest()
         if (request is CallRequest) {
+            if (round.turnCount < room.settings.minimumBeforeCall) {
+                player.sendMessage(InvalidCallMessage)
+                return false
+            }
             isCall = true
-            return
+            return true
         }
         if (request !is TurnDiscardingRequest) {
-            error("Invalid request $request")
+            return false
         }
         val cards = request.cards
+        if (cards.isEmpty()) {
+            player.sendMessage(InvalidDiscardMessage)
+            return false
+        }
+        with(round) {
+            // make sure that the players have the cards they are trying to discard
+            if (!player.hand.containsAll(cards)) {
+                player.sendMessage(InvalidDiscardMessage)
+                return false
+            }
+        }
         if (room.validators.none { it.validateCards(cards) }) {
-            pla
-            error("Invalid cards $cards")
+            player.sendMessage(InvalidDiscardMessage)
+            return false
         }
         placedCards = cards
-        player.sendMessage(
-            GeneralPlayerUpdateMessage(
-                with(round) { player.hand },
-                with(game) {
-
+        // remove cards from player's hand
+        with(round) {
+            player.hand.removeAll(cards)
+        }
+        round.discardPile.addAll(cards)
+        player.sendMessage(round.createGeneralPlayerUpdateMessage(player))
+        // send a basic update to all players
+        for (otherPlayer in room.players) {
+            if (otherPlayer == player) continue
+            otherPlayer.sendMessage(round.createDiscardCardMessage(player, cards))
+        }
+        // wait for them to send a draw request
+        request = player.receiveRequest()
+        if (request !is TurnDrawingRequest) {
+            return false
+        }
+        this.drawingSource = request.source
+        when (request.source) {
+            DrawSource.Deck -> {
+                val card = round.deck.removeFirst()
+                if (round.deck.isEmpty()) {
+                    if (round.discardPile.isEmpty()) {
+                        error("Deck and discard pile are empty")
+                    }
+                    // remove everything but the top card from the discard pile
+                    val keepCard = round.discardPile.removeLast()
+                    val otherCards = round.discardPile.dropLast(1)
+                    round.deck.addAll(otherCards.shuffled())
+                    round.discardPile.clear()
+                    round.discardPile.add(keepCard)
                 }
-            )
-        )
-
-
+                pickedUpCard = card
+            }
+            DrawSource.DiscardPile -> {
+                if (round.discardPile.isEmpty()) {
+                    error("Discard pile is empty")
+                }
+                val card = round.discardPile.removeLast()
+                pickedUpCard = card
+            }
+        }
+        return true
     }
+
+
 }
 
 enum class DrawSource {
