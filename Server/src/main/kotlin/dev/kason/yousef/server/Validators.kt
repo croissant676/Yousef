@@ -88,8 +88,6 @@ fun interface Validator {
             cards.all { it.suit == cards.first().suit } && Run(sizeRange).validateCards(cards)
         }
 
-
-
     }
 }
 

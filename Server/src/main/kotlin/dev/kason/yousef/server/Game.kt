@@ -3,11 +3,17 @@ package dev.kason.yousef.server
 import dev.kason.yousef.server.data.*
 import kotlin.math.absoluteValue
 
+// represents a game
 class Game(override val room: Room) : RoomEntity {
 
+    // the scores of the players, stored in a map
     val playerScores: MutableMap<Player, MutableList<Int>> = mutableMapOf()
+
+    //
     val Player.scores: MutableList<Int>
         get() = playerScores[this] ?: error("Player $name is not in the game")
+
+    //
     val Player.totalScore: Int
         get() = scores.sum()
 
@@ -17,6 +23,9 @@ class Game(override val room: Room) : RoomEntity {
 
         // we send a game end message to everyone
         val scores = room.players.map { createPlayerScoreRepresentation(it) }
+        val gameEndMessage = GameEndMessage(loser.name, scores)
+        room.players.forEach { it.sendMessage(gameEndMessage) }
+        room.spectators.forEach { it.sendMessage(gameEndMessage) }
 
     }
 

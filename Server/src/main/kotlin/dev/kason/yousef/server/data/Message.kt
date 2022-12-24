@@ -130,7 +130,6 @@ data class RoundCardRevealMessage(
 @SerialName("game_end")
 data class GameEndMessage(
     val loser: String,
-    val scores: List<PlayerScoreRepresentation>,
-    val players: List<PlayerRevealCardRepresentation>
+    val scores: List<PlayerScoreRepresentation>
 ) : Message
 
