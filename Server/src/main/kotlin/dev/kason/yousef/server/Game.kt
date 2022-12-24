@@ -11,7 +11,12 @@ class Game(override val room: Room) : RoomEntity {
     val Player.totalScore: Int
         get() = scores.sum()
 
-    suspend fun end(winner: Player) {
+    suspend fun end(loser: Player) {
+//      TODO laugh at them
+        room.game = null
+
+        // we send a game end message to everyone
+        val scores = room.players.map { createPlayerScoreRepresentation(it) }
 
     }
 
@@ -75,6 +80,10 @@ class Round(val game: Game, val turnOrder: List<Player>) : RoomEntity {
         }
     }
 
+    suspend fun play() {
+        game.end(beginRound())
+    }
+
     suspend fun playerCall() = with(game) {
         val value = currentPlayer.sumCards
         if (room.players.filter { it != currentPlayer }.any { it.sumCards <= value }) {
@@ -105,16 +114,15 @@ class Round(val game: Game, val turnOrder: List<Player>) : RoomEntity {
                 )
             }
         }
+        val message =
+            RoundCardRevealMessage(
+                room.players.map { player -> createPlayerRevealCardRepresentation(player) },
+                room.players.map { player -> createPlayerScoreRepresentation(player) }
+            )
         // send everyone a message with the scores
         room.players.forEach {
-            it.sendMessage(
-                RoundEndMessage(
-
-                )
-            )
+            it.sendMessage(message)
         }
-
-
     }
 
     fun createGeneralPlayerUpdateMessage(player: Player): GeneralPlayerUpdateMessage = with(game) {

@@ -11,7 +11,6 @@ class Room(val roomCode: String = generateRandomRoomCode()) {
     val spectators get() = participants.filterIsInstance<Spectator>()
 
     var game: Game? = null
-        private set
 
     data class Settings(
         var playerCap: Int = Int.MAX_VALUE,
@@ -21,7 +20,6 @@ class Room(val roomCode: String = generateRandomRoomCode()) {
         var filterChat: Boolean = true,
         var strictSuits: Boolean = false,
         var allowJokers: Boolean = true,
-        var scoreCutting: Boolean = true,
         var scoreLimit: Int = 100,
         var deckMultiplier: Int = 1,
         var playerHandSize: Int = 4,
@@ -30,7 +28,7 @@ class Room(val roomCode: String = generateRandomRoomCode()) {
         var minimumBeforeCall: Int = 3,
         var turnLimit: Int = Int.MAX_VALUE,
         var miscallPunishment: Int = 30,
-        var informalMoves: Boolean = false,
+        var informalMoves: Boolean = true,
         var passcode: String? = null,
         var sixNineRules: Boolean = false
     )

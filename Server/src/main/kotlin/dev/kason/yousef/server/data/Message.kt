@@ -1,6 +1,7 @@
 package dev.kason.yousef.server.data
 
 import dev.kason.yousef.server.Card
+import dev.kason.yousef.server.Game
 import dev.kason.yousef.server.Player
 import dev.kason.yousef.server.Round
 import kotlinx.serialization.SerialName
@@ -109,7 +110,7 @@ data class PlayerScoreRepresentation(
     val totalScore: Int
 )
 
-fun Round.createPlayerScoreRepresentation(player: Player): PlayerScoreRepresentation = with(game) {
+fun Game.createPlayerScoreRepresentation(player: Player): PlayerScoreRepresentation {
     return PlayerScoreRepresentation(
         player.name,
         player.scores,
@@ -119,7 +120,7 @@ fun Round.createPlayerScoreRepresentation(player: Player): PlayerScoreRepresenta
 
 @Serializable
 @SerialName("card_reveal")
-data class RoundEndMessage(
+data class RoundCardRevealMessage(
     val players: List<PlayerRevealCardRepresentation>,
     val scores: List<PlayerScoreRepresentation>
 ) : Message

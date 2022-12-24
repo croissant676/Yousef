@@ -39,3 +39,16 @@ fun createDeck(multiple: Int = 1): ArrayDeque<Card> {
     deck.shuffle()
     return deck
 }
+
+fun createJokerLessDeck(multiple: Int = 1): ArrayDeque<Card> {
+    val deck = ArrayDeque<Card>()
+    repeat(multiple) {
+        for (suit in Suit.values()) {
+            for (value in 1..13) {
+                deck += Card(suit, value)
+            }
+        }
+    }
+    deck.shuffle()
+    return deck
+}
