@@ -1,6 +1,7 @@
 package dev.kason.yousef.server
 
-interface RoomEntity {
+// represents a room where players can start / play games
+class Room(customRoomCode: String? = null) {
 
     val room: Room
 }
@@ -14,17 +15,13 @@ class Room(val roomCode: String = generateRandomRoomCode()) {
 
     data class Settings(
         var playerCap: Int = Int.MAX_VALUE,
-        var spectatorCap: Int = Int.MAX_VALUE,
-        var allowSpectators: Boolean = true,
         var allowChat: Boolean = true,
-        var filterChat: Boolean = true,
         var strictSuits: Boolean = false,
         var allowJokers: Boolean = true,
         var scoreLimit: Int = 100,
         var deckMultiplier: Int = 1,
         var playerHandSize: Int = 4,
         var endWhenDeckEmpty: Boolean = true,
-        var continueOnTie: Boolean = true,
         var minimumBeforeCall: Int = 3,
         var turnLimit: Int = Int.MAX_VALUE,
         var miscallPunishment: Int = 30,
@@ -40,6 +37,8 @@ class Room(val roomCode: String = generateRandomRoomCode()) {
         Validator.Run
     )
 
+    val settings = Settings()
+
     fun saveSettings() {
         if (settings.sixNineRules) {
             validators.add(Validator.SixNineValidator)
@@ -47,13 +46,20 @@ class Room(val roomCode: String = generateRandomRoomCode()) {
             validators.remove(Validator.SixNineValidator)
         }
     }
-}
 
-fun generateRandomRoomCode(): String {
-    // 4 random uppercase letters
-    val builder = StringBuilder()
-    repeat(4) {
-        builder.append(('A'..'Z').random())
+    // entity tied to a room
+    interface Entity {
+
+        val room: Room
+
+        val settings: Settings
+            get() = room.settings
+
+        val currentGame: Game?
+            get() = room.currentGame
+
+        val players: List<Player>
+            get() = room.players
+
     }
-    return builder.toString()
 }
