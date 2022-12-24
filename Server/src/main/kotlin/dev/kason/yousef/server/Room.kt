@@ -39,6 +39,12 @@ class Room(val roomCode: String = generateRandomRoomCode()) {
 
     val settings = Settings()
 
+    // the validators for this room
+    // validators make sure that the cards that are played are valid
+    // these can be changed through plugins or settings
+    val validators =
+        Validator.DefaultValidators.toMutableList()
+
     fun saveSettings() {
         if (settings.sixNineRules) {
             validators.add(Validator.SixNineValidator)
