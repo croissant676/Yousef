@@ -84,6 +84,7 @@ value class Card(private val data: Byte) {
 }
 
 fun List<Card>.sumValues(): Int = sumOf { it.value }
+
 fun createDeck(multiplier: Int = 1, hasJokers: Boolean = true): ArrayDeque<Card> {
     val deck = ArrayDeque<Card>()
     repeat(multiplier) {

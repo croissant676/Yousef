@@ -3,7 +3,6 @@ package dev.kason.yousef.server
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
-
 class Round(val game: Game, val roundNumber: Int) : Room.Entity by game {
 
     // number of turns elapsed
@@ -21,6 +20,56 @@ class Round(val game: Game, val roundNumber: Int) : Room.Entity by game {
     val currentPlayer: Player
         get() = players[currentTurnIndex]
 
+    val currentTurn = turns.lastOrNull()
+
+    // the deck of cards
+    val deck: ArrayDeque<Card> = createDeck(
+        multiplier = settings.deckMultiplier,
+        hasJokers = settings.allowJokers
+    )
+
+    val discardPile: MutableList<Card> = mutableListOf()
+
+    suspend fun start() {
+        dealCards()
+    }
+
+    fun dealCards() {
+        // initialize the player's hands
+        players.forEach { playerHands[it] = mutableListOf() }
+        // deal cards to each player
+        for (player in players) {
+            repeat(settings.playerHandSize) {
+                player.hand += draw()
+            }
+        }
+        // add a card to the discard pile
+        discardPile += draw()
+    }
+
+    // draw a card from the deck
+    fun draw(): Card = deck.removeLast()
+
+    suspend fun onDeckEmpty() {
+        if (settings.endWhenDeckEmpty) {
+            endRoundWithoutWinner()
+        } else {
+            val topCard = discardPile.removeLast()
+            val movedCards = discardPile.dropLast(1)
+            discardPile.clear()
+            discardPile += topCard
+            deck += movedCards
+            deck.shuffle()
+        }
+    }
+
+    private suspend fun endRoundWithoutWinner() {
+
+    }
+
+    suspend fun startTurn() {
+
+    }
 
 }
 
@@ -74,8 +123,8 @@ enum class DrawSource {
     Discard
 }
 
-
-val Player.hand: List<Card>
+// api: don't modify the list
+val Player.hand: MutableList<Card>
     get() {
         val game = currentGame ?: throw IllegalStateException("Game not started")
         val currentRound = game.currentRound ?: throw IllegalStateException("Round not started")

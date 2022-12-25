@@ -1,7 +1,10 @@
 package dev.kason.yousef.server
 
+import kotlinx.serialization.Serializable
+import java.util.*
+
 // represents a room where players can start / play games
-class Room(customRoomCode: String? = null) {
+class Room(_customRoomCode: String? = null) {
 
     val room: Room
 }
@@ -27,7 +30,8 @@ class Room(val roomCode: String = generateRandomRoomCode()) {
         var miscallPunishment: Int = 30,
         var informalMoves: Boolean = true,
         var passcode: String? = null,
-        var sixNineRules: Boolean = false
+        var sixNineRules: Boolean = false,
+        var isPublic: Boolean = true
     )
 
     val settings = Settings()
@@ -68,4 +72,5 @@ class Room(val roomCode: String = generateRandomRoomCode()) {
             get() = room.players
 
     }
+
 }
