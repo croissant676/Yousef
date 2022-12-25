@@ -68,6 +68,8 @@ class Round(val game: Game, val roundNumber: Int) : Room.Entity by game {
     }
 
     suspend fun startTurn() {
+        // we send a message to the player
+        // to indicate that it is their turn
 
     }
 

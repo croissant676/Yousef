@@ -4,7 +4,7 @@ import io.ktor.websocket.*
 
 object RoomManager {
 
-    private val rooms = mutableMapOf<String, Room>()
+    internal val rooms = mutableMapOf<String, Room>()
     val roomListing: List<Room>
         get() = rooms.values.toList().filter { it.settings.isPublic }
 

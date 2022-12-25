@@ -42,12 +42,14 @@ class Player(
         return Json.decodeFromString(text)
     }
 
+    // closes the websocket
+    // and removes the player from the room
     suspend fun closeWith(
         closeReason: CloseReason = CloseReason(CloseReason.Codes.NORMAL, "Client closed the connection")
     ) {
         websocket.close(closeReason)
         // remove from room
-        room.playerSet -= this
+        room.removePlayer(this)
     }
 
 }

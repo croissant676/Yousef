@@ -49,11 +49,26 @@ class Room(val roomCode: String = generateRandomRoomCode()) {
     val validators =
         Validator.DefaultValidators.toMutableList()
 
-    fun saveSettings() {
-        if (settings.sixNineRules) {
-            validators.add(Validator.SixNineValidator)
-        } else {
-            validators.remove(Validator.SixNineValidator)
+    suspend fun onGameEnd() {
+        currentGame = null
+    }
+
+    // this method assumes that the player websocket has already been closed
+    suspend fun removePlayer(player: Player) {
+        playerSet.remove(player)
+        // send a player left message to everyone
+        broadcast(PlayerLeftMessage(player.name))
+        if (player == owner) {
+            if (playerSet.isEmpty()) {
+                // remove from room manager
+                RoomManager.rooms.remove(roomCode)
+                return
+            }
+            // if the owner left, the oldest player becomes the new owner
+            owner = playerSet.minByOrNull { it.joinTimestamp }!!
+            //  send a room owner update message to everyone
+            broadcastExcluding(RoomOwnerUpdateMessage(owner.name), owner)
+            // we exclude owner bc we need to send a whole new message to the owner
         }
     }
 
