@@ -54,7 +54,8 @@ class Room(val roomCode: String = generateRandomRoomCode()) {
     }
 
     // this method assumes that the player websocket has already been closed
-    suspend fun removePlayer(player: Player) {
+    //
+    internal suspend fun removeAndBroadcast(player: Player) {
         playerSet.remove(player)
         // send a player left message to everyone
         broadcast(PlayerLeftMessage(player.name))
@@ -69,6 +70,7 @@ class Room(val roomCode: String = generateRandomRoomCode()) {
             //  send a room owner update message to everyone
             broadcastExcluding(RoomOwnerUpdateMessage(owner.name), owner)
             // we exclude owner bc we need to send a whole new message to the owner
+            
         }
     }
 
@@ -83,8 +85,8 @@ class Room(val roomCode: String = generateRandomRoomCode()) {
         val currentGame: Game?
             get() = room.currentGame
 
-        val players: List<Player>
-            get() = room.players
+        val activePlayers: List<Player>
+            get() = room.activePlayers
 
     }
 

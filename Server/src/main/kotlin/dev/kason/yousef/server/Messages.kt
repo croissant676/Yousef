@@ -1,5 +1,6 @@
 package dev.kason.yousef.server
 
+import kotlinx.serialization.SerialInfo
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -23,4 +24,4 @@ data class PlayerLeftMessage(
 @Serializable
 @SerialName("player_turn")
 // indicates that it is the player's turn
-object TurnIndicatorMessage: Message
+object TurnIndicatorMessage : Message

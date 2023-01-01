@@ -5,6 +5,14 @@ import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
+val json = Json {
+    ignoreUnknownKeys = true
+    isLenient = true
+    encodeDefaults = false
+    // null values are not encoded
+}
+
+
 class Player(
     var name: String, val websocket: WebSocketSession,
     override val room: Room
@@ -42,6 +50,9 @@ class Player(
         return Json.decodeFromString(text)
     }
 
+    @Suppress("UNCHECKED_CAST")
+    suspend fun <T: Request> receiveRequestOfType(): T? = receiveRequest() as? T
+
     // closes the websocket
     // and removes the player from the room
     suspend fun closeWith(
@@ -49,7 +60,7 @@ class Player(
     ) {
         websocket.close(closeReason)
         // remove from room
-        room.removePlayer(this)
+        room.removeAndBroadcast(this)
     }
 
 }

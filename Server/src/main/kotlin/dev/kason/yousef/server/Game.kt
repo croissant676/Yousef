@@ -86,6 +86,24 @@ class Round(val game: Game, val turnOrder: List<Player>) : RoomEntity {
                 playerCall()
                 return currentPlayer
             }
+            // otherwise, return the largest value one
+            val maxScore = potentialLosers.values.maxOf { it.totalScore }
+            var losers = potentialLosers.filter { it.value.totalScore == maxScore }
+            if (losers.size == 1) {
+                return losers.keys.first()
+            }
+            // if multiple are tied for the largest value, return the player with the higher sum of card values of
+            // last round
+            // if tied, continue to previous rounds until start
+            for (round in rounds.reversed()) {
+                val maxValue = losers.values.maxOf { it[round.roundNumber].score }
+                losers = losers.filter { it.value[round.roundNumber].score == maxValue }
+                if (losers.size == 1) {
+                    return losers.keys.first()
+                }
+            }
+            // if still tied, then return random player :shrug:
+            return losers.keys.random()
         }
     }
 
