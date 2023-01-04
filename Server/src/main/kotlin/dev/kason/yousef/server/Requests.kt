@@ -29,3 +29,7 @@ data class DiscardRequest(
 data class DrawRequest(
     val source: DrawSource
 ) : Request
+
+@Serializable
+@SerialName("start")
+object StartRoundRequest : Request

@@ -1,6 +1,5 @@
 package dev.kason.yousef.server
 
-import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -33,18 +32,33 @@ class Round(val game: Game, val roundNumber: Int) : Room.Entity by game {
     val currentPlayer: Player
         get() = playerOrder[currentTurnIndex]
 
-    val currentTurn = turns.lastOrNull()
-
     // the deck of cards
     val deck: ArrayDeque<Card> = createDeck(
         multiplier = settings.deckMultiplier,
         hasJokers = settings.allowJokers
     )
 
+    private var ended: Boolean = false
+
     val discardPile: MutableList<Card> = mutableListOf()
 
-    suspend fun start() {
+    // move to the next player
+    fun incrementPlayer() {
+        currentTurnIndex++
+        if (currentTurnIndex >= playerOrder.size) {
+            currentTurnIndex = 0
+            turnsElapsed++
+        }
+    }
+
+    // should suspend until the game is over
+    suspend fun play() {
         dealCards()
+        // we continue as long as the round has not ended
+        while (!ended) {
+            playTurn()
+            incrementPlayer()
+        }
     }
 
     suspend fun dealCards() {
@@ -89,7 +103,7 @@ class Round(val game: Game, val roundNumber: Int) : Room.Entity by game {
         // we also send an update of everything...
         updateStateFor(currentPlayer)
         // and wait for a response
-        var request = repeatUntilValidRequest {
+        var request = currentPlayer.repeatUntilValidRequest {
             it is DiscardRequest ||
                 (turnsElapsed >= settings.minimumBeforeCall && it is CallRequest)
             // if turns elapsed is 3, it's the 4th round
@@ -98,17 +112,17 @@ class Round(val game: Game, val roundNumber: Int) : Room.Entity by game {
         // by now the request should be either a discard or a call
         // if the player requests to call
         if (request is CallRequest) {
-            val winningPlayers = handleCallRequest()
-            // we tell the other players who beat the caller
-            // we also need to reveal everyone's cards and stuff, etc.
-
+            // we add a call turn to the list
+            turns += Turn.Call(this, turns.size + 1)
+            endRound()
+            return
         }
         // if not, then the request is to discard
         // check if the cards are valid
         if (!isValidDiscard((request as DiscardRequest).cards)) {
             // invalid
             // retry until player discards a valid set of cards
-            request = repeatUntilValidRequest { _request ->
+            request = currentPlayer.repeatUntilValidRequest { _request ->
                 _request is DiscardRequest && isValidDiscard(_request.cards)
             }
         }
@@ -125,7 +139,7 @@ class Round(val game: Game, val roundNumber: Int) : Room.Entity by game {
         updateEveryone()
 
         // now we wait for a draw request
-        val drawRequest = repeatUntilValidRequest {
+        val drawRequest = currentPlayer.repeatUntilValidRequest {
             it is DrawRequest
         }
 
@@ -135,6 +149,12 @@ class Round(val game: Game, val roundNumber: Int) : Room.Entity by game {
 
         // add the card to the player's hand
         currentPlayer.hand += card
+        // we add a regular turn to the list
+        turns += Turn.Regular(this, turns.size + 1).apply {
+            this.drawSource = source
+            this.drawnCard = card
+            this.discardingCards += discardingCards
+        }
         // update everyone
         updateEveryone()
     }
@@ -156,6 +176,7 @@ class Round(val game: Game, val roundNumber: Int) : Room.Entity by game {
             cards = player.hand,
             totalValue = player.handValue
         )
+
         val revealCardsMessage = RevealCardsMessage(
             lowerScorers = lowerScorers,
             players = playerOrder.map(::createRep)
@@ -170,7 +191,9 @@ class Round(val game: Game, val roundNumber: Int) : Room.Entity by game {
         return room.validators.any { it.validate(cards) }
     }
 
-    fun handleCallRequest(): List<Player> {
+    // this calculates which players have a lesser hand an returns those, if any
+    // it also adds their scores to their score record.
+    private fun distributePoints(): List<Player> {
         val callerSum = currentPlayer.handValue
         val otherPlayers = room.playerSet.filter { it != currentPlayer }
         // check if caller has the smallest value hand
@@ -232,31 +255,21 @@ class Round(val game: Game, val roundNumber: Int) : Room.Entity by game {
             )
             player.scoreRecord.addRecord(record)
         }
+        // no winners, we just reveal cards to everyone
+        revealPlayerCards(emptyList())
+        this.ended = true
     }
 
-    // function that retries requests until it receives a valid request
-    suspend fun repeatUntilValidRequest(
-        retryMessage: Message? = null, predicate: (Request) -> Boolean
-    ): Request {
-        var request: Request? = null
-        var changedValue: Boolean
-        do {
-            try {
-                if (request != null) {
-                    currentPlayer.sendMessage(retryMessage ?: InvalidRequestMessage)
-                }
-                // if an exception occurs while we try to receive request
-                // and request is not initialized
-                // we must check to make sure that predicate isn't run with the uninitialized
-                // request as that would result in an exception
-                request = currentPlayer.receiveRequest()
-                changedValue = true
-            } catch (e: Exception) {
-                changedValue = false
-            }
-            // we only run the predicate on new values
-        } while (changedValue && !predicate(request!!))
-        return request!!
+    // ends the round with the specified caller
+
+    suspend fun endRound(caller: Player = currentPlayer) {
+        val winningPlayers = distributePoints()
+        // we tell the other players who beat the caller
+        // we also need to reveal everyone's cards and stuff, etc.
+        revealPlayerCards(winningPlayers.map { it.name })
+        // now we tell the loop to end
+        // which will end the round
+        this.ended = true
     }
 
     @Serializable
@@ -286,11 +299,10 @@ sealed class Turn(val round: Round, val turnNumber: Int) : Room.Entity by round 
     class Call(round: Round, turnNumber: Int) : Turn(round, turnNumber)
 
     // regular turn
-
     class Regular(round: Round, turnNumber: Int) : Turn(round, turnNumber) {
         // the cards that were placed at the beginning
         // if empty, indicates that the player has not placed any cards
-        val placedCards = mutableListOf<Card>()
+        val discardingCards = mutableListOf<Card>()
 
         // the draw source
         lateinit var drawSource: DrawSource
@@ -336,7 +348,7 @@ sealed class Turn(val round: Round, val turnNumber: Int) : Room.Entity by round 
                     descriptor,
                     4,
                     ListSerializer(Card.serializer()),
-                    value.placedCards
+                    value.discardingCards
                 )
                 compositeEncoder.encodeSerializableElement(
                     descriptor,

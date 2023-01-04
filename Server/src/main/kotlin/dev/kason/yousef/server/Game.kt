@@ -107,9 +107,45 @@ class Round(val game: Game, val turnOrder: List<Player>) : RoomEntity {
         }
     }
 
-    suspend fun play() {
-        game.end(beginRound())
+    // when a round has ended, we check to see if any player has lost
+    suspend fun finishRound() {
+        val loser = checkForLoser()
+        if (loser == null) {
+            // if no one has lost, we start a new round
+            // wait until the host has started the round
+            room.owner.receiveRequestOfType<StartRoundRequest>()
+            // ^^ suspends until the host sends a start round request
+            // we can now start the round
+            startRound()
+        } else {
+            // if someone has lost, we end the game
+            endGame(loser)
+        }
     }
+
+    suspend fun startRound() {
+        // create a new round
+        val round = Round(this, roundNumber = rounds.size + 1)
+        // add the round to the list of rounds
+        rounds.add(round)
+        // send a round start message to all players
+        room.broadcast(
+            RoundStartMessage(
+                players = room.activePlayers.map { it.name },
+                roundNumber = round.roundNumber,
+            )
+        )
+        // wait until the round has ended
+        round.play()
+        // when the round has ended, we finish the round
+        finishRound()
+    }
+
+    suspend fun endGame(loser: Player) {
+
+    }
+
+    private val rounds: MutableList<Round> = mutableListOf()
 
     suspend fun playerCall() = with(game) {
         val value = currentPlayer.sumCards

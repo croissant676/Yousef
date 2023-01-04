@@ -38,7 +38,7 @@ class Player(
     }
 
     suspend fun sendMessage(message: Message) {
-        val text = Json.encodeToString(message)
+        val text = json.encodeToString(message)
         websocket.send(Frame.Text(text))
     }
 
@@ -47,11 +47,38 @@ class Player(
         val frame = websocket.incoming.receive()
         if (frame !is Frame.Text) return receiveRequest()
         val text = frame.readText()
-        return Json.decodeFromString(text)
+        return json.decodeFromString(text)
     }
 
     @Suppress("UNCHECKED_CAST")
-    suspend fun <T: Request> receiveRequestOfType(): T? = receiveRequest() as? T
+    suspend inline fun <reified T : Request> receiveRequestOfType(): T? = repeatUntilValidRequest {
+        it is T
+    } as T?
+
+    // function that retries requests until it receives a valid request
+    suspend fun repeatUntilValidRequest(
+        retryMessage: Message? = null, predicate: (Request) -> Boolean
+    ): Request {
+        var request: Request? = null
+        var changedValue: Boolean
+        do {
+            try {
+                if (request != null) {
+                    sendMessage(retryMessage ?: InvalidRequestMessage)
+                }
+                // if an exception occurs while we try to receive request
+                // and request is not initialized
+                // we must check to make sure that predicate isn't run with the uninitialized
+                // request as that would result in an exception
+                request = receiveRequest()
+                changedValue = true
+            } catch (e: Exception) {
+                changedValue = false
+            }
+            // we only run the predicate on new values
+        } while (changedValue && !predicate(request!!))
+        return request!!
+    }
 
     // closes the websocket
     // and removes the player from the room

@@ -2,9 +2,12 @@ package dev.kason.yousef.server
 
 import kotlinx.serialization.Serializable
 import java.util.*
+import kotlin.time.Duration
 
 // represents a room where players can start / play games
 class Room(_customRoomCode: String? = null) {
+
+
 
     val room: Room
 }
@@ -89,5 +92,12 @@ class Room(val roomCode: String = generateRandomRoomCode()) {
             get() = room.activePlayers
 
     }
+
+    @Serializable
+    data class PlayerState(
+        val name: String,
+        val score: Int,
+        val timePlaying: Duration
+    )
 
 }
