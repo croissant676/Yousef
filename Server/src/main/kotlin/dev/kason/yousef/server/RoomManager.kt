@@ -15,7 +15,6 @@ object RoomManager {
         rooms[newRoom.roomCode] = newRoom
         val owner = Player(createRoomRequest.username, ownerSession, newRoom)
         newRoom.owner = owner
-
         return newRoom
     }
 

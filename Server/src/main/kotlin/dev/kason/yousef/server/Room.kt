@@ -7,8 +7,6 @@ import kotlin.time.Duration
 // represents a room where players can start / play games
 class Room(_customRoomCode: String? = null) {
 
-
-
     val room: Room
 }
 
