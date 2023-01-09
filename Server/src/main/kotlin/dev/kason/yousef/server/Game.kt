@@ -3,11 +3,17 @@ package dev.kason.yousef.server
 import dev.kason.yousef.server.data.*
 import kotlin.math.absoluteValue
 
+// represents a game
 class Game(override val room: Room) : RoomEntity {
 
+    // the scores of the players, stored in a map
     val playerScores: MutableMap<Player, MutableList<Int>> = mutableMapOf()
+
+    //
     val Player.scores: MutableList<Int>
         get() = playerScores[this] ?: error("Player $name is not in the game")
+
+    //
     val Player.totalScore: Int
         get() = scores.sum()
 
@@ -17,6 +23,9 @@ class Game(override val room: Room) : RoomEntity {
 
         // we send a game end message to everyone
         val scores = room.players.map { createPlayerScoreRepresentation(it) }
+        val gameEndMessage = GameEndMessage(loser.name, scores)
+        room.players.forEach { it.sendMessage(gameEndMessage) }
+        room.spectators.forEach { it.sendMessage(gameEndMessage) }
 
     }
 
@@ -77,12 +86,66 @@ class Round(val game: Game, val turnOrder: List<Player>) : RoomEntity {
                 playerCall()
                 return currentPlayer
             }
+            // otherwise, return the largest value one
+            val maxScore = potentialLosers.values.maxOf { it.totalScore }
+            var losers = potentialLosers.filter { it.value.totalScore == maxScore }
+            if (losers.size == 1) {
+                return losers.keys.first()
+            }
+            // if multiple are tied for the largest value, return the player with the higher sum of card values of
+            // last round
+            // if tied, continue to previous rounds until start
+            for (round in rounds.reversed()) {
+                val maxValue = losers.values.maxOf { it[round.roundNumber].score }
+                losers = losers.filter { it.value[round.roundNumber].score == maxValue }
+                if (losers.size == 1) {
+                    return losers.keys.first()
+                }
+            }
+            // if still tied, then return random player :shrug:
+            return losers.keys.random()
         }
     }
 
-    suspend fun play() {
-        game.end(beginRound())
+    // when a round has ended, we check to see if any player has lost
+    suspend fun finishRound() {
+        val loser = checkForLoser()
+        if (loser == null) {
+            // if no one has lost, we start a new round
+            // wait until the host has started the round
+            room.owner.receiveRequestOfType<StartRoundRequest>()
+            // ^^ suspends until the host sends a start round request
+            // we can now start the round
+            startRound()
+        } else {
+            // if someone has lost, we end the game
+            endGame(loser)
+        }
     }
+
+    suspend fun startRound() {
+        // create a new round
+        val round = Round(this, roundNumber = rounds.size + 1)
+        // add the round to the list of rounds
+        rounds.add(round)
+        // send a round start message to all players
+        room.broadcast(
+            RoundStartMessage(
+                players = room.activePlayers.map { it.name },
+                roundNumber = round.roundNumber,
+            )
+        )
+        // wait until the round has ended
+        round.play()
+        // when the round has ended, we finish the round
+        finishRound()
+    }
+
+    suspend fun endGame(loser: Player) {
+
+    }
+
+    private val rounds: MutableList<Round> = mutableListOf()
 
     suspend fun playerCall() = with(game) {
         val value = currentPlayer.sumCards
